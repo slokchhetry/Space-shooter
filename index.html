@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Shooter Deluxe</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.1/pixi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        #menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+        }
+        #menu input, #menu button {
+            margin: 10px;
+            padding: 5px;
+        }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 18px;
+        }
+        #footer {
+            position: absolute;
+            bottom: 10px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 14px;
+            color: #888;
+        }
+        .stars {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            background: white;
+            z-index: -1;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameCanvas"></div>
+    <div id="menu">
+        <h1>Space Shooter Deluxe</h1>
+        <input type="text" id="playerName" placeholder="Enter your name">
+        <button id="startButton">Start Game</button>
+        <div id="highScores"></div>
+    </div>
+    <div id="hud">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+        <div id="powerUpIndicator"></div>
+    </div>
+    <div id="footer">made by ironman</div>
+
+    <script>
+        const app = new PIXI.Application({
+            width: 800,
+            height: 600,
+            backgroundColor: 0x000033
+        });
+        document.getElementById('gameCanvas').appendChild(app.view);
+
+        // Create animated background
+        for (let i = 0; i < 100; i++) {
+            const star = document.createElement('div');
+            star.className = 'stars';
+            star.style.left = `${Math.random() * 100}%`;
+            star.style.top = `${Math.random() * 100}%`;
+            star.style.animationDuration = `${Math.random() * 3 + 1}s`;
+            document.body.appendChild(star);
+        }
+
+        // Game variables
+        let player, bullets = [], enemies = [], powerUps = [];
+        let score = 0, lives = 3, gameOver = false;
+        let playerName = '';
+        let highScores = JSON.parse(localStorage.getItem('highScores')) || [];
+
+        // Sound effects
+        const sounds = {
+            shoot: new Howl({ src: ['https://assets.codepen.io/21542/howler-shoot.mp3'] }),
+            explosion: new Howl({ src: ['https://assets.codepen.io/21542/howler-explosion.mp3'] }),
+            powerUp: new Howl({ src: ['https://assets.codepen.io/21542/howler-powerup.mp3'] }),
+            hit: new Howl({ src: ['https://assets.codepen.io/21542/howler-hit.mp3'] })
+        };
+
+        // Create player
+        function createPlayer() {
+            player = new PIXI.Graphics();
+            player.beginFill(0x00ff88);
+            player.moveTo(0, -20);
+            player.lineTo(-20, 20);
+            player.lineTo(20, 20);
+            player.closePath();
+            player.endFill();
+            player.x = app.screen.width / 2;
+            player.y = app.screen.height - 50;
+            player.powerUpDuration = 0;
+            app.stage.addChild(player);
+        }
+
+        // Create bullet
+        function createBullet() {
+            const bullet = new PIXI.Graphics();
+            bullet.beginFill(player.powerUpDuration > 0 ? 0xff00ff : 0xffffff);
+            bullet.drawRect(0, 0, 4, 10);
+            bullet.endFill();
+            bullet.x = player.x;
+            bullet.y = player.y - 20;
+            bullet.powered = player.powerUpDuration > 0;
+            app.stage.addChild(bullet);
+            bullets.push(bullet);
+            sounds.shoot.play();
+        }
+
+        // Create enemy
+        function createEnemy() {
+            const enemy = new PIXI.Graphics();
+            enemy.beginFill(Math.random() * 0xffffff);
+            enemy.drawRect(-20, -20, 40, 40);
+            enemy.endFill();
+            enemy.x = Math.random() * app.screen.width;
+            enemy.y = -40;
+            enemy.speed = Math.random() * 2 + 1;
+            enemy.rotation = Math.random() * Math.PI * 2;
+            enemy.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            enemy.health = 2;
+            app.stage.addChild(enemy);
+            enemies.push(enemy);
+        }
+
+        // Create power-up
+        function createPowerUp() {
+            const powerUp = new PIXI.Graphics();
+            powerUp.beginFill(0xffff00);
+            powerUp.drawStar(0, 0, 5, 15, 7);
+            powerUp.endFill();
+            powerUp.x = Math.random() * app.screen.width;
+            powerUp.y = -30;
+            powerUp.speed = 1;
+            powerUp.rotation = 0;
+            app.stage.addChild(powerUp);
+            powerUps.push(powerUp);
+        }
+
+        // Game loop
+        app.ticker.add(() => {
+            if (gameOver) return;
+
+            // Move player
+            if (keys.ArrowLeft && player.x > 0) player.x -= 5;
+            if (keys.ArrowRight && player.x < app.screen.width) player.x += 5;
+
+            // Shoot bullets
+            if (keys.Space && app.ticker.lastTime % 10 === 0) {
+                createBullet();
+            }
+
+            // Move bullets
+            bullets.forEach((bullet, index) => {
+                bullet.y -= 7;
+                if (bullet.y < 0) {
+                    app.stage.removeChild(bullet);
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // Move enemies
+            enemies.forEach((enemy, index) => {
+                enemy.y += enemy.speed;
+                enemy.rotation += enemy.rotationSpeed;
+                if (enemy.y > app.screen.height) {
+                    app.stage.removeChild(enemy);
+                    enemies.splice(index, 1);
+                }
+            });
+
+            // Move power-ups
+            powerUps.forEach((powerUp, index) => {
+                powerUp.y += powerUp.speed;
+                powerUp.rotation += 0.05;
+                if (powerUp.y > app.screen.height) {
+                    app.stage.removeChild(powerUp);
+                    powerUps.splice(index, 1);
+                }
+            });
+
+            // Check collisions
+            bullets.forEach((bullet, bulletIndex) => {
+                enemies.forEach((enemy, enemyIndex) => {
+                    if (checkCollision(bullet, enemy)) {
+                        enemy.health--;
+                        if (enemy.health <= 0) {
+                            app.stage.removeChild(enemy);
+                            enemies.splice(enemyIndex, 1);
+                            score += 100;
+                            updateScore();
+                            sounds.explosion.play();
+                        }
+                        app.stage.removeChild(bullet);
+                        bullets.splice(bulletIndex, 1);
+                    }
+                });
+            });
+
+            enemies.forEach((enemy, index) => {
+                if (checkCollision(player, enemy)) {
+                    app.stage.removeChild(enemy);
+                    enemies.splice(index, 1);
+                    lives--;
+                    updateLives();
+                    sounds.hit.play();
+                    if (lives <= 0) {
+                        gameOver = true;
+                        endGame();
+                    }
+                }
+            });
+
+            powerUps.forEach((powerUp, index) => {
+                if (checkCollision(player, powerUp)) {
+                    app.stage.removeChild(powerUp);
+                    powerUps.splice(index, 1);
+                    player.powerUpDuration = 300;
+                    sounds.powerUp.play();
+                }
+            });
+
+            // Spawn enemies and power-ups
+            if (Math.random() < 0.02) createEnemy();
+            if (Math.random() < 0.005) createPowerUp();
+
+            // Update power-up duration
+            if (player.powerUpDuration > 0) {
+                player.powerUpDuration--;
+                document.getElementById('powerUpIndicator').textContent = `Power-Up: ${Math.ceil(player.powerUpDuration / 60)}`;
+            } else {
+                document.getElementById('powerUpIndicator').textContent = '';
+            }
+        });
+
+        // Collision detection
+        function checkCollision(a, b) {
+            const aBox = a.getBounds();
+            const bBox = b.getBounds();
+            return aBox.x + aBox.width > bBox.x &&
+                   aBox.x < bBox.x + bBox.width &&
+                   aBox.y + aBox.height > bBox.y &&
+                   aBox.y < bBox.y + bBox.height;
+        }
+
+        // Keyboard controls
+        const keys = {};
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => keys[e.code] = false);
+
+        // Update score and lives
+        function updateScore() {
+            document.getElementById('score').textContent = score;
+        }
+
+        function updateLives() {
+            document.getElementById('lives').textContent = lives;
+        }
+
+        // Start game
+        document.getElementById('startButton').addEventListener('click', () => {
+            playerName = document.getElementById('playerName').value || 'Player';
+            document.getElementById('menu').style.display = 'none';
+            startGame();
+        });
+
+        function startGame() {
+            createPlayer();
+            score = 0;
+            lives = 3;
+            gameOver = false;
+            updateScore();
+            updateLives();
+        }
+
+        // End game
+        function endGame() {
+            highScores.push({ name: playerName, score: score });
+            highScores.sort((a, b) => b.score - a.score);
+            highScores = highScores.slice(0, 5);
+            localStorage.setItem('highScores', JSON.stringify(highScores));
+            displayHighScores();
+            document.getElementById('menu').style.display = 'block';
+        }
+
+        // Display high scores
+        function displayHighScores() {
+            const highScoresElement = document.getElementById('highScores');
+            highScoresElement.innerHTML = '<h2>High Scores</h2>';
+            highScores.forEach((score, index) => {
+                highScoresElement.innerHTML += `<p>${index + 1}. ${score.name}: ${score.score}</p>`;
+            });
+        }
+
+        displayHighScores();
+    </script>
+</body>
+  </html>
